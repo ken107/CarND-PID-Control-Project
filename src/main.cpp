@@ -28,15 +28,34 @@ std::string hasData(std::string s) {
   return "";
 }
 
+void Restart(uWS::WebSocket<uWS::SERVER> ws){
+  std::string reset_msg = "42[\"reset\",{}]";
+  ws.send(reset_msg.data(), reset_msg.length(), uWS::OpCode::TEXT);
+}
+
+double my_abs(double d) {
+  return d < 0 ? -d : d;
+}
+
 int main()
 {
   uWS::Hub h;
 
+  double params[] = {.12,1.2,0.001};
+  double dp[] = {.1,2,1};
+  int paramIndex = 1;
+  double best_error = 9999;
+  bool pending = false;
+  bool ready = true;
+
   PID pid;
   // TODO: Initialize the pid variable.
-  pid.Init(.1, 0.01, 0);
+  pid.Init(params[0], params[1], params[2]);
 
-  h.onMessage([&pid](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
+  PID pid_sp;
+  pid_sp.Init(1, 0, 0);
+
+  h.onMessage([&pid, &pid_sp, &params, &dp, &paramIndex, &best_error, &pending, &ready](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -49,27 +68,71 @@ int main()
         if (event == "telemetry") {
           // j[1] is the data JSON object
           double cte = std::stod(j[1]["cte"].get<std::string>());
-          //double speed = std::stod(j[1]["speed"].get<std::string>());
+          double speed = std::stod(j[1]["speed"].get<std::string>());
           //double angle = std::stod(j[1]["steering_angle"].get<std::string>());
           double steer_value;
+          double throttle;
           /*
           * TODO: Calcuate steering value here, remember the steering value is
           * [-1, 1].
           * NOTE: Feel free to play around with the throttle and speed. Maybe use
           * another PID controller to control the speed!
           */
+          if (ready && my_abs(cte) > 2.5) {
+            //car gone off track, reset
+            double err = pid.MeanSquaredError();
+            if (!pending) {
+              if (err < best_error) {
+                best_error = err;
+                dp[paramIndex] *= 1.1;
+                paramIndex = 1;
+                params[paramIndex] += dp[paramIndex];
+              }
+              else {
+                params[paramIndex] -= 2*dp[paramIndex];
+                pending = true;
+              }
+            }
+            else {
+              pending = false;
+              if (err < best_error) {
+                best_error = err;
+                dp[paramIndex] *= 1.1;
+              }
+              else {
+                params[paramIndex] += dp[paramIndex];
+                dp[paramIndex] *= .9;
+              }
+              paramIndex = 1;
+              params[paramIndex] += dp[paramIndex];
+            }
+
+            std::cout << "mse=(" << err << "," << best_error << ") Trying i=(" << paramIndex << "," << pending << ") K=(" << params[0] << "," << params[1] << ") dK=(" << dp[0] << "," << dp[1] << ")" << std::endl;
+            pid.Init(params[0], params[1], params[2]);
+            ready = false;
+            Restart(ws);
+          }
+
+
+
           pid.UpdateError(cte);
           steer_value = -pid.TotalError();
 
+          pid_sp.UpdateError(speed-std::max(30.0, 60*(1-my_abs(cte)/2.5)));
+          throttle = -pid_sp.TotalError();
+
           // DEBUG
-          std::cout << pid.p_error << "," << pid.d_error << "," << pid.i_error << std::endl;
-          std::cout << "CTE: " << cte << " Steering Value: " << steer_value << std::endl;
+          //std::cout << pid.Kp << "x" << pid.p_error << " + "
+          //  << pid.Kd << "x" << pid.d_error << " + "
+          //  << pid.Ki << "x" << pid.i_error << " = "
+          //  << pid.TotalError() << std::endl;
+          //std::cout << "CTE: " << cte << " Steering Value: " << steer_value << std::endl;
 
           json msgJson;
           msgJson["steering_angle"] = steer_value;
-          msgJson["throttle"] = 0.3;
+          msgJson["throttle"] = throttle;
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
-          std::cout << msg << std::endl;
+          //std::cout << msg << std::endl;
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
         }
       } else {
@@ -95,8 +158,9 @@ int main()
     }
   });
 
-  h.onConnection([&h](uWS::WebSocket<uWS::SERVER> ws, uWS::HttpRequest req) {
+  h.onConnection([&h, &ready](uWS::WebSocket<uWS::SERVER> ws, uWS::HttpRequest req) {
     std::cout << "Connected!!!" << std::endl;
+    ready = true;
   });
 
   h.onDisconnection([&h](uWS::WebSocket<uWS::SERVER> ws, int code, char *message, size_t length) {
