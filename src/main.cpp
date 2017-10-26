@@ -41,7 +41,7 @@ int main()
 {
   uWS::Hub h;
 
-  double params[] = {.12,1.2,0.001};
+  double params[] = {.12,3.4,0.001};
   double dp[] = {.1,2,1};
   int paramIndex = 1;
   double best_error = 9999;
@@ -85,7 +85,7 @@ int main()
               if (err < best_error) {
                 best_error = err;
                 dp[paramIndex] *= 1.1;
-                paramIndex = 1;
+                paramIndex = (paramIndex+1) %2;
                 params[paramIndex] += dp[paramIndex];
               }
               else {
@@ -103,7 +103,7 @@ int main()
                 params[paramIndex] += dp[paramIndex];
                 dp[paramIndex] *= .9;
               }
-              paramIndex = 1;
+              paramIndex = (paramIndex+1) %2;
               params[paramIndex] += dp[paramIndex];
             }
 

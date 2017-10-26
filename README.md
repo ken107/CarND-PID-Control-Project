@@ -2,6 +2,36 @@
 Self-Driving Car Engineer Nanodegree Program
 
 ---
+## Files
+- _PID.cpp_: PID controller implementation and tracking of the MSE for Twiddle
+- _main.cpp_: steering & throttle control, and Twiddle implementation
+
+## Demo Video
+https://youtu.be/GXjdCbwiTCk
+
+## Final Hyperparameters
+- Kp = .14 (_main.cpp line 44_)
+- Kd = 3.4
+- Ki = 0.001
+
+## Reflection
+
+**Throttle Control**
+I started out by implementing a throttle PID controller to maintain constant speed.  The throttle controller uses simple setting (1,0,0), which appears to work just fine.  Later, I came up with the idea of using the throttle controller to brake when the car encounters a curve and is moving too fast.  I do this by setting the desired maximum speed inversely proportional to the CTE.  In the final configuration, the maximum speed is set to 60 when CTE=0 and lowers to 30 when CTE>=1.25 (_main.cpp line 121_).
+
+**Twiddle Implementation**
+I implemented Twiddle using a state machine (_main.cpp line 45 and 81_).  I use the code from the discussion forum to automatically reset the simulator each time the CTE gets bigger than 2.5m, i.e. the car goes off the road.  The Twiddle implementation works to find local maximum; however, it takes a long time to converge.  It appears it may "wander" off if the delta values are set too large; though it may come back after a while.  Even with good initial settings, finding optimal values are very slow because the car will drive a very long time before it goes off track.  I remedied this by using a lower max-CTE of 1 meter, to force a reset sooner each iteration.  In the end, however, most of the work was through manual tuning.  I used Twiddle only to tune the Kd parameter, after I have chosen a good value for Kp.
+
+**Manual Tuning**
+Through many hours of manual tuning, I slowly understood the effects of the PID coefficients.
+
+- The Kp parameter controls how quickly (or strongly) the car responds to a curve.  The Kp parameter alone is not enough to cause CTE to converge to 0.  The car keeps overcompensating and ends up swerving forever.  A large Kp causes more over-steer, resulting in bigger swerving.
+
+- The Kd differential parameter dampens the effect of first parameter and allows the CTE to converge to 0.  When CTE is increasing, the Kd component is negative, adding to the effect of Kp, resulting in stronger corrective steering when entering a curve.  When CTE is decreasing, the Kd component is positive, reducing the effect of Kp, resulting in graceful convergence to the reference track.  The tricky part is if Kd is set too high, its positive effect will trump the effect of Kp, resulting in more swerving, a behavior I couldn't completely understand and need further investigation.
+
+- The Ki integral parameter is supposed to correct any system bias such as steering drift (e.g. wheel misalignment).  I could not really see the effect of this parameter during my manual tuning process.  In the end, I set it to a small non-zero value.  In theory, over time the steering drift makes itself known through the accumulative CTE; and the Ki component then accounts for this in the steering calculation.
+
+In the end, my method for choosing parameter is basically as follows.  First I pick a big enough Kp value that results in good response to curves.  Then I find a good Kd value that results in quick and graceful dampening of CTE.  With a lot of trial and errors, good values for Kd and Kp were found that allows the car to pass the lake track at an average speed of 40-50.
 
 ## Dependencies
 
@@ -19,7 +49,7 @@ Self-Driving Car Engineer Nanodegree Program
   * Run either `./install-mac.sh` or `./install-ubuntu.sh`.
   * If you install from source, checkout to commit `e94b6e1`, i.e.
     ```
-    git clone https://github.com/uWebSockets/uWebSockets 
+    git clone https://github.com/uWebSockets/uWebSockets
     cd uWebSockets
     git checkout e94b6e1
     ```
@@ -33,66 +63,4 @@ There's an experimental patch for windows in this [PR](https://github.com/udacit
 1. Clone this repo.
 2. Make a build directory: `mkdir build && cd build`
 3. Compile: `cmake .. && make`
-4. Run it: `./pid`. 
-
-Tips for setting up your environment can be found [here](https://classroom.udacity.com/nanodegrees/nd013/parts/40f38239-66b6-46ec-ae68-03afd8a601c8/modules/0949fca6-b379-42af-a919-ee50aa304e6a/lessons/f758c44c-5e40-4e01-93b5-1a82aa4e044f/concepts/23d376c7-0195-4276-bdf0-e02f1f3c665d)
-
-## Editor Settings
-
-We've purposefully kept editor configuration files out of this repo in order to
-keep it as simple and environment agnostic as possible. However, we recommend
-using the following settings:
-
-* indent using spaces
-* set tab width to 2 spaces (keeps the matrices in source code aligned)
-
-## Code Style
-
-Please (do your best to) stick to [Google's C++ style guide](https://google.github.io/styleguide/cppguide.html).
-
-## Project Instructions and Rubric
-
-Note: regardless of the changes you make, your project must be buildable using
-cmake and make!
-
-More information is only accessible by people who are already enrolled in Term 2
-of CarND. If you are enrolled, see [the project page](https://classroom.udacity.com/nanodegrees/nd013/parts/40f38239-66b6-46ec-ae68-03afd8a601c8/modules/f1820894-8322-4bb3-81aa-b26b3c6dcbaf/lessons/e8235395-22dd-4b87-88e0-d108c5e5bbf4/concepts/6a4d8d42-6a04-4aa6-b284-1697c0fd6562)
-for instructions and the project rubric.
-
-## Hints!
-
-* You don't have to follow this directory structure, but if you do, your work
-  will span all of the .cpp files here. Keep an eye out for TODOs.
-
-## Call for IDE Profiles Pull Requests
-
-Help your fellow students!
-
-We decided to create Makefiles with cmake to keep this project as platform
-agnostic as possible. Similarly, we omitted IDE profiles in order to we ensure
-that students don't feel pressured to use one IDE or another.
-
-However! I'd love to help people get up and running with their IDEs of choice.
-If you've created a profile for an IDE that you think other students would
-appreciate, we'd love to have you add the requisite profile files and
-instructions to ide_profiles/. For example if you wanted to add a VS Code
-profile, you'd add:
-
-* /ide_profiles/vscode/.vscode
-* /ide_profiles/vscode/README.md
-
-The README should explain what the profile does, how to take advantage of it,
-and how to install it.
-
-Frankly, I've never been involved in a project with multiple IDE profiles
-before. I believe the best way to handle this would be to keep them out of the
-repo root to avoid clutter. My expectation is that most profiles will include
-instructions to copy files to a new location to get picked up by the IDE, but
-that's just a guess.
-
-One last note here: regardless of the IDE used, every submitted project must
-still be compilable with cmake and make./
-
-## How to write a README
-A well written README file can enhance your project and portfolio.  Develop your abilities to create professional README files by completing [this free course](https://www.udacity.com/course/writing-readmes--ud777).
-
+4. Run it: `./pid`.
